@@ -58,7 +58,7 @@ export class Mjolnir {
     private displayName: string;
     private localpart: string;
     private currentState: string = STATE_NOT_STARTED;
-    private protections: IProtection[] = [];
+    public protections: IProtection[] = [];
     /**
      * This is for users who are not listed on a watchlist,
      * but have been flagged by the automatic spam detection as suispicous
@@ -290,7 +290,7 @@ export class Mjolnir {
             if (config.syncOnStartup) {
                 await logMessage(LogLevel.INFO, "Mjolnir@startup", "Syncing lists...");
                 await this.syncLists(config.verboseLogging);
-                await this.enableProtections();
+                await this.registerProtections();
             }
 
             this.currentState = STATE_RUNNING;
@@ -373,30 +373,50 @@ export class Mjolnir {
         }
     }
 
-    private async getEnabledProtections() {
-        let enabled: string[] = [];
-        try {
-            const protections: Object | null = await this.client.getAccountData(ENABLED_PROTECTIONS_EVENT_TYPE);
-            if (protections && protections['enabled']) {
-                for (const protection of protections['enabled']) {
-                    enabled.push(protection);
-                }
-            }
-        } catch (e) {
-            LogService.warn("Mjolnir", extractRequestError(e));
-        }
-
-        return enabled;
-    }
-
-    private async enableProtections() {
-        for (const protection of await this.getEnabledProtections()) {
+    /*
+     * Take all the builtin protections, register them to set their enabled (or not) state and
+     * update their settings with any saved non-default values
+     */
+    private async registerProtections() {
+        for (const protection of PROTECTIONS) {
             try {
-                this.enableProtection(protection, false);
+                this.registerProtection(protection);
             } catch (e) {
                 LogService.warn("Mjolnir", extractRequestError(e));
             }
         }
+    }
+
+    /*
+     * Make a list of the names of enabled protections and save them in a state event
+     */
+    private async saveEnabledProtections() {
+        const protections = Object.keys(this.protections).filter(p => this.protections[p].enabled);
+        await this.client.setAccountData(ENABLED_PROTECTIONS_EVENT_TYPE, { enabled: protections });
+    }
+    /*
+     * Enable a protection by name and persist its enable state in to a state event
+     *
+     * @param name The name of the protection whose settings we're enabling
+     */
+    public async enableProtection(name: string) {
+        this.protections[name].enabled = true;
+        await this.saveEnabledProtections();
+    }
+    /*
+     * Disable a protection by name and remove it from the persistent list of enabled protections
+     *
+     * @param name The name of the protection whose settings we're disabling
+     */
+    public async disableProtection(name: string) {
+        this.protections[name].enabled = true;
+        await this.saveEnabledProtections();
+    }
+    /*
+     * List the names of currently enabled events
+     */
+    public getEnabledProtections() {
+        return Object.values(this.protections).filter(p => p.enabled);
     }
 
     /*
@@ -408,7 +428,7 @@ export class Mjolnir {
      * @returns Every saved setting for this protectionName that has a valid value
      */
     public async getProtectionSettings(protectionName: string): Promise<{ [setting: string]: any }> {
-        const settingDefinitions = PROTECTIONS[protectionName].factory().settings;
+        const settingDefinitions = this.protections[protectionName].settings;
         let savedSettings: { [setting: string]: any } = {}
         try {
             savedSettings = await this.client.getRoomStateEvent(
@@ -444,7 +464,7 @@ export class Mjolnir {
      * @param changedSettings The settings to change and their values
      */
     public async setProtectionSettings(protectionName: string, changedSettings: { [setting: string]: any }): Promise<any> {
-        const settingDefinitions = PROTECTIONS[protectionName].factory().settings;
+        const settingDefinitions = this.protections[protectionName].settings;
         const validatedSettings: { [setting: string]: any } = {};
 
         for (let [key, value] of Object.entries(changedSettings)) {
@@ -464,31 +484,32 @@ export class Mjolnir {
         );
     }
 
-    public async enableProtection(protectionName: string, persist = true): Promise<any> {
-        const definition = PROTECTIONS[protectionName];
-        if (!definition) throw new Error("Failed to find protection by name: " + protectionName);
+    /*
+     * Given a protection object; add it to our list of protections, set whether it is enabled
+     * and update its settings with any saved non-default values.
+     *
+     * @param protection The protection object we want to register
+     */
+    public async registerProtection(protection: IProtection): Promise<any> {
+        this.protections[protection.name] = protection;
 
-        const protection = definition.factory();
-        this.protections.push(protection);
+        const protections: Object | null = await this.client.getAccountData(ENABLED_PROTECTIONS_EVENT_TYPE);
+        protection.enabled = protections && protections['enabled'] && protections['enabled'].includes(protection.name);
 
-        const savedSettings = await this.getProtectionSettings(protectionName);
+        const savedSettings = await this.getProtectionSettings(protection.name);
         for (let [key, value] of Object.entries(savedSettings)) {
             // this.getProtectionSettings() validates this data for us, so we don't need to
             protection.settings[key].setValue(value);
         }
-
-        if (persist) {
-            const existing = this.protections.map(p => p.name);
-            await this.client.setAccountData(ENABLED_PROTECTIONS_EVENT_TYPE, { enabled: existing });
-        }
     }
-
-    public async disableProtection(protectionName: string): Promise<any> {
-        const idx = this.protections.findIndex(p => p.name === protectionName);
-        if (idx >= 0) this.protections.splice(idx, 1);
-
-        const existing = this.protections.map(p => p.name);
-        await this.client.setAccountData(ENABLED_PROTECTIONS_EVENT_TYPE, { enabled: existing });
+    /*
+     * Given a protection object; remove it from our list of protections.
+     *
+     * @param protection The protection object we want to unregister
+     */
+    public unregisterProtection(protectionName: string) {
+        if (!(protectionName in this.protections)) throw new Error("Failed to find protection by name: " + protectionName);
+        delete this.protections[protectionName];
     }
 
     public async watchList(roomRef: string): Promise<BanList | null> {
@@ -766,8 +787,8 @@ export class Mjolnir {
         if (Object.keys(this.protectedRooms).includes(roomId)) {
             if (event['sender'] === await this.client.getUserId()) return; // Ignore ourselves
 
-            // Iterate all the protections
-            for (const protection of this.protections) {
+            // Iterate all the enabled protections
+            for (const protection of this.getEnabledProtections()) {
                 try {
                     await protection.handleEvent(this, roomId, event);
                 } catch (e) {

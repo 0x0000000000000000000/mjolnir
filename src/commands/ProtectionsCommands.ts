@@ -43,10 +43,10 @@ enum ConfigAction {
 
 async function _execConfigChangeProtection(mjolnir: Mjolnir, parts: string[], action: ConfigAction): Promise<string> {
     const [protectionName, ...settingParts] = parts[0].split(".");
-    const protection = PROTECTIONS[protectionName];
+    const protection = mjolnir.protections[protectionName];
     if (protection === undefined) return `Unknown protection ${protectionName}`;
 
-    const defaultSettings = protection.factory().settings
+    const defaultSettings = protection.settings
     const settingName = settingParts[0];
     const stringValue = parts[1];
 
@@ -134,7 +134,7 @@ export async function execConfigRemoveProtection(roomId: string, event: any, mjo
  * !mjolnir get [protection name]
  */
 export async function execConfigGetProtection(roomId: string, event: any, mjolnir: Mjolnir, parts: string[]) {
-    let pickProtections = Object.keys(PROTECTIONS);
+    let pickProtections = Object.keys(mjolnir.protections);
     // this means the output is sorted by protection name
     pickProtections.sort();
 
@@ -156,24 +156,17 @@ export async function execConfigGetProtection(roomId: string, event: any, mjolni
     let anySettings = false;
 
     for (const protectionName of pickProtections) {
-        // get all available settings, their default values, and their parsers
-        const availableSettings = PROTECTIONS[protectionName].factory().settings;
-        // get all saved non-default values
-        const savedSettings = await mjolnir.getProtectionSettings(protectionName);
+        const protectionSettings = mjolnir.protections[protectionName].settings;
 
-        if (Object.keys(availableSettings).length === 0) continue;
+        if (Object.keys(protectionSettings).length === 0) continue;
 
-        const settingNames = Object.keys(PROTECTIONS[protectionName].factory().settings);
+        const settingNames = Object.keys(protectionSettings);
         // this means, within each protection name, setting names are sorted
         settingNames.sort();
         for (const settingName of settingNames) {
             anySettings = true;
 
-            let value = availableSettings[settingName].value
-            if (settingName in savedSettings)
-                // we have a non-default value for this setting, use it
-                value = savedSettings[settingName]
-
+            let value = protectionSettings[settingName].value
             text += `* ${protectionName}.${settingName}: ${value}`;
             html += `<li><code>${protectionName}.${settingName}</code>: <code>${htmlEscape(value)}</code></li>`
         }
