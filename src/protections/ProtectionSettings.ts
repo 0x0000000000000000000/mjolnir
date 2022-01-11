@@ -94,6 +94,20 @@ export class StringListProtectionSetting extends ProtectionListSetting<string, s
     }
 }
 
+export class OptionListProtectionSetting extends StringProtectionSetting {
+    options: string[];
+    constructor(defaultValue: string, options: string[]) {
+        super();
+        this.setValue(defaultValue);
+        this.options = options;
+    }
+    validate = (data) => this.options.includes(data);
+}
+
+export class MXIDListProtectionSetting extends StringListProtectionSetting {
+    validate = (data) => /^@\S+:\S+$/.test(data);
+}
+
 export class NumberProtectionSetting extends ProtectionSetting<number, number> {
     min: number|undefined;
     max: number|undefined;

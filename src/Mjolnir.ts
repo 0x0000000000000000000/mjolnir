@@ -222,7 +222,9 @@ export class Mjolnir {
 
         // Setup Web APIs
         console.log("Creating Web APIs");
-        this.webapis = new WebAPIs(new ReportManager(this));
+        const reportManager = new ReportManager(this);
+        reportManager.on("report.new", this.handleReport);
+        this.webapis = new WebAPIs(reportManager);
     }
 
     public get lists(): BanList[] {
@@ -951,5 +953,11 @@ export class Mjolnir {
      */
     public async processRedactionQueue(roomId?: string): Promise<RoomUpdateError[]> {
         return await this.eventRedactionQueue.process(this.client, roomId);
+    }
+
+    private async handleReport(roomId: string, reporterId: string, event: any, reason?: string) {
+        for (const protection of this.enabledProtections) {
+            await protection.handleReport(this, roomId, reporterId, event, reason);
+        }
     }
 }
