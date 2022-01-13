@@ -487,8 +487,8 @@ export class Mjolnir {
     public async registerProtection(protection: IProtection): Promise<any> {
         this.protections[protection.name] = protection;
 
-        const protections: Object | null = await this.client.getAccountData(ENABLED_PROTECTIONS_EVENT_TYPE);
-        protection.enabled = protections && protections['enabled'] && protections['enabled'].includes(protection.name);
+        const protections: { [name: string]: string[] } | null = await this.client.getAccountData(ENABLED_PROTECTIONS_EVENT_TYPE);
+        protection.enabled = protections?.enabled?.includes(protection.name) ?? false;
 
         const savedSettings = await this.getProtectionSettings(protection.name);
         for (let [key, value] of Object.entries(savedSettings)) {
@@ -502,7 +502,9 @@ export class Mjolnir {
      * @param protection The protection object we want to unregister
      */
     public unregisterProtection(protectionName: string) {
-        if (!(protectionName in this.protections)) throw new Error("Failed to find protection by name: " + protectionName);
+        if (!(protectionName in this.protections)) {
+            throw new Error("Failed to find protection by name: " + protectionName);
+        }
         delete this.protections[protectionName];
     }
 
