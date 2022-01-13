@@ -58,7 +58,7 @@ export class Mjolnir {
     private displayName: string;
     private localpart: string;
     private currentState: string = STATE_NOT_STARTED;
-    public protections: IProtection[] = [];
+    public protections = new Map<string, IProtection>();
     /**
      * This is for users who are not listed on a watchlist,
      * but have been flagged by the automatic spam detection as suispicous
@@ -234,7 +234,7 @@ export class Mjolnir {
     }
 
     public get enabledProtections(): IProtection[] {
-        return this.protections;
+        return [...this.protections.values()].filter(p => p.enabled);
     }
 
     /**
@@ -391,7 +391,7 @@ export class Mjolnir {
      * Make a list of the names of enabled protections and save them in a state event
      */
     private async saveEnabledProtections() {
-        const protections = Object.keys(this.protections).filter(p => this.protections[p].enabled);
+        const protections = this.enabledProtections.map(p => p.name);
         await this.client.setAccountData(ENABLED_PROTECTIONS_EVENT_TYPE, { enabled: protections });
     }
     /*
@@ -411,12 +411,6 @@ export class Mjolnir {
     public async disableProtection(name: string) {
         this.protections[name].enabled = false;
         await this.saveEnabledProtections();
-    }
-    /*
-     * List the names of currently enabled events
-     */
-    public getEnabledProtections() {
-        return Object.values(this.protections).filter(p => p.enabled);
     }
 
     /*
@@ -788,7 +782,7 @@ export class Mjolnir {
             if (event['sender'] === await this.client.getUserId()) return; // Ignore ourselves
 
             // Iterate all the enabled protections
-            for (const protection of this.getEnabledProtections()) {
+            for (const protection of this.enabledProtections) {
                 try {
                     await protection.handleEvent(this, roomId, event);
                 } catch (e) {
