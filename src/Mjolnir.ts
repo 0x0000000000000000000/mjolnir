@@ -409,7 +409,7 @@ export class Mjolnir {
      * @param name The name of the protection whose settings we're disabling
      */
     public async disableProtection(name: string) {
-        this.protections[name].enabled = true;
+        this.protections[name].enabled = false;
         await this.saveEnabledProtections();
     }
     /*
