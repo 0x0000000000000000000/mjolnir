@@ -5,6 +5,7 @@ import { newTestUser } from "../clientHelper";
 import { getMessagesByUserIn } from "../../../src/utils";
 import { LogService } from "matrix-bot-sdk";
 import { onReactionTo } from "./commandUtils";
+import { mjolnir } from "../mjolnirSetupUtils";
 
  describe("Test: The redaction command", function () {
     it('Mjölnir redacts all of the events sent by a spammer when instructed to by giving their id and a room id.', async function() {
@@ -12,15 +13,15 @@ import { onReactionTo } from "./commandUtils";
         // Create a few users and a room.
         let badUser = await newTestUser(false, "spammer-needs-redacting");
         let badUserId = await badUser.getUserId();
-        const mjolnir = config.RUNTIME.client!
-        let mjolnirUserId = await mjolnir.getUserId();
+        const mjolnirClient = config.RUNTIME.client!
+        let mjolnirUserId = await mjolnirClient.getUserId();
         let moderator = await newTestUser(false, "moderator");
         this.moderator = moderator;
         await moderator.joinRoom(config.managementRoom);
         let targetRoom = await moderator.createRoom({ invite: [await badUser.getUserId(), mjolnirUserId]});
         await moderator.setUserPowerLevel(mjolnirUserId, targetRoom, 100);
         await badUser.joinRoom(targetRoom);
-        moderator.sendMessage(config.managementRoom, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
+        moderator.sendMessage(mjolnir().managementRoomId, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
 
         LogService.debug("redactionTest", `targetRoom: ${targetRoom}, managementRoom: ${config.managementRoom}`);
         // Sandwich irrelevant messages in bad messages.
@@ -34,8 +35,8 @@ import { onReactionTo } from "./commandUtils";
 
         try {
             moderator.start();
-            await onReactionTo(moderator, config.managementRoom, '✅', async () => {
-                return await moderator.sendMessage(config.managementRoom, { msgtype: 'm.text', body: `!mjolnir redact ${badUserId} ${targetRoom}` });
+            await onReactionTo(moderator, mjolnir().managementRoomId, '✅', async () => {
+                return await moderator.sendMessage(mjolnir().managementRoomId, { msgtype: 'm.text', body: `!mjolnir redact ${badUserId} ${targetRoom}` });
             });
         } finally {
             moderator.stop();
@@ -56,8 +57,8 @@ import { onReactionTo } from "./commandUtils";
         // Create a few users and a room.
         let badUser = await newTestUser(false, "spammer-needs-redacting");
         let badUserId = await badUser.getUserId();
-        const mjolnir = config.RUNTIME.client!
-        let mjolnirUserId = await mjolnir.getUserId();
+        const mjolnirClient = config.RUNTIME.client!
+        let mjolnirUserId = await mjolnirClient.getUserId();
         let moderator = await newTestUser(false, "moderator");
         this.moderator = moderator;
         await moderator.joinRoom(config.managementRoom);
@@ -66,7 +67,7 @@ import { onReactionTo } from "./commandUtils";
             let targetRoom = await moderator.createRoom({ invite: [await badUser.getUserId(), mjolnirUserId]});
             await moderator.setUserPowerLevel(mjolnirUserId, targetRoom, 100);
             await badUser.joinRoom(targetRoom);
-            await moderator.sendMessage(config.managementRoom, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
+            await moderator.sendMessage(mjolnir().managementRoomId, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
             targetRooms.push(targetRoom);
 
             // Sandwich irrelevant messages in bad messages.
@@ -81,8 +82,8 @@ import { onReactionTo } from "./commandUtils";
 
         try {
             moderator.start();
-            await onReactionTo(moderator, config.managementRoom, '✅', async () => {
-                return await moderator.sendMessage(config.managementRoom, { msgtype: 'm.text', body: `!mjolnir redact ${badUserId}` });
+            await onReactionTo(moderator, mjolnir().managementRoomId, '✅', async () => {
+                return await moderator.sendMessage(mjolnir().managementRoomId, { msgtype: 'm.text', body: `!mjolnir redact ${badUserId}` });
             });
         } finally {
             moderator.stop();
@@ -104,21 +105,21 @@ import { onReactionTo } from "./commandUtils";
         this.timeout(60000);
         // Create a few users and a room.
         let badUser = await newTestUser(false, "spammer-needs-redacting");
-        const mjolnir = config.RUNTIME.client!
-        let mjolnirUserId = await mjolnir.getUserId();
+        const mjolnirClient = config.RUNTIME.client!
+        let mjolnirUserId = await mjolnirClient.getUserId();
         let moderator = await newTestUser(false, "moderator");
         this.moderator = moderator;
         await moderator.joinRoom(config.managementRoom);
         let targetRoom = await moderator.createRoom({ invite: [await badUser.getUserId(), mjolnirUserId]});
         await moderator.setUserPowerLevel(mjolnirUserId, targetRoom, 100);
         await badUser.joinRoom(targetRoom);
-        moderator.sendMessage(config.managementRoom, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
+        moderator.sendMessage(mjolnir().managementRoomId, {msgtype: 'm.text.', body: `!mjolnir rooms add ${targetRoom}`});
         let eventToRedact = await badUser.sendMessage(targetRoom, {msgtype: 'm.text', body: "Very Bad Stuff"});
 
         try {
             moderator.start();
-            await onReactionTo(moderator, config.managementRoom, '✅', async () => {
-                return await moderator.sendMessage(config.managementRoom, {msgtype: 'm.text', body: `!mjolnir redact https://matrix.to/#/${encodeURIComponent(targetRoom)}/${encodeURIComponent(eventToRedact)}`});
+            await onReactionTo(moderator, mjolnir().managementRoomId, '✅', async () => {
+                return await moderator.sendMessage(mjolnir().managementRoomId, {msgtype: 'm.text', body: `!mjolnir redact https://matrix.to/#/${encodeURIComponent(targetRoom)}/${encodeURIComponent(eventToRedact)}`});
             });
         } finally {
             moderator.stop();
