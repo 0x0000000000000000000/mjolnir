@@ -20,7 +20,7 @@ import { MXIDListProtectionSetting, NumberProtectionSetting } from "./Protection
 import { Mjolnir } from "../Mjolnir";
 
 export class TrustedReporters extends Protection {
-    private recentReported = new Map<string, Set<string>>();
+    private recentReported = new Map<string /* eventId */, Set<string /* reporterId */>>();
 
     settings = {
         mxids: new MXIDListProtectionSetting(),
@@ -52,14 +52,13 @@ export class TrustedReporters extends Protection {
             this.recentReported.set(event.id, new Set<string>());
             if (this.recentReported.size > 20) {
                 // queue too big. push the oldest reported event off the queue
-                const oldest = Array.from(this.recentReported)[this.recentReported.size - 1][0]
+                const oldest = Array.from(this.recentReported.keys())[this.recentReported.size - 1][0]
                 this.recentReported.delete(oldest);
             }
         }
 
         this.recentReported[event.id].add(reporterId);
-        const reporters = Array.from(this.recentReported[event.id]);
-        reporters.sort();
+        const reporters = this.recentReported[event.id];
 
         let met: string[] = [];
         if (reporters.length === this.settings.alertThreshold.value) {

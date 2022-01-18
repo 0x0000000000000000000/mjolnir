@@ -16,6 +16,10 @@ limitations under the License.
 
 export class ProtectionSettingValidationError extends Error {};
 
+/*
+ * @param TChange Type for individual pieces of data (e.g. `string`)
+ * @param TValue Type for overall value of this setting (e.g. `string[]`)
+ */
 export interface IProtectionSetting<TChange, TValue> {
     // the current value of this setting
     value: TValue
@@ -94,7 +98,9 @@ export class StringListProtectionSetting extends ProtectionListSetting<string, s
     }
 }
 
+// A list of strings that match the glob pattern @*:*
 export class MXIDListProtectionSetting extends StringListProtectionSetting {
+    // validate an individual piece of data for this setting - namely a single mxid
     validate = (data) => /^@\S+:\S+$/.test(data);
 }
 
