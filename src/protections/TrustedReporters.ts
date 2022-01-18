@@ -52,7 +52,7 @@ export class TrustedReporters extends Protection {
             this.recentReported.set(event.id, new Set<string>());
             if (this.recentReported.size > 20) {
                 // queue too big. push the oldest reported event off the queue
-                const oldest = Array.from(this.recentReported.keys())[this.recentReported.size - 1][0]
+                const oldest = Array.from(this.recentReported.keys())[0];
                 this.recentReported.delete(oldest);
             }
         }
