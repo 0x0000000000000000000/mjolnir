@@ -57,7 +57,7 @@ export class TrustedReporters extends Protection {
             }
         }
 
-        this.recentReported[event.id].add(reporterId);
+        this.recentReported.get(event.id)?.add(reporterId);
         const reporters = this.recentReported[event.id];
 
         let met: string[] = [];
