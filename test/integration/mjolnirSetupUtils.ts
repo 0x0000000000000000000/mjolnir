@@ -15,15 +15,14 @@ limitations under the License.
 */
 import {
     MatrixClient,
-    PantalaimonClient,
     MemoryStorageProvider,
     LogService,
     LogLevel,
-    RichConsoleLogger
+    RichConsoleLogger,
 } from "@vector-im/matrix-bot-sdk";
 
-import { Mjolnir}  from '../../src/Mjolnir';
-import { overrideRatelimitForUser, registerUser } from "./clientHelper";
+import { Mjolnir } from "../../src/Mjolnir";
+import { getTempCryptoStore, overrideRatelimitForUser, registerUser } from "./clientHelper";
 import { initializeGlobalPerformanceMetrics, initializeSentry, patchMatrixClient } from "../../src/utils";
 import { IConfig } from "../../src/config";
 
@@ -37,13 +36,13 @@ export async function ensureAliasedRoomExists(client: MatrixClient, alias: strin
     try {
         return await client.resolveRoom(alias);
     } catch (e) {
-        if (e?.body?.errcode === 'M_NOT_FOUND') {
-            console.info(`${alias} hasn't been created yet, so we're making it now.`)
+        if (e?.body?.errcode === "M_NOT_FOUND") {
+            console.info(`${alias} hasn't been created yet, so we're making it now.`);
             let roomId = await client.createRoom({
                 visibility: "public",
             });
             await client.createRoomAlias(alias, roomId);
-            return roomId
+            return roomId;
         }
         throw e;
     }
@@ -54,15 +53,15 @@ async function configureMjolnir(config: IConfig) {
     initializeSentry(config);
     initializeGlobalPerformanceMetrics(config);
 
-    try {
-        await registerUser(config.homeserverUrl, config.pantalaimon.username, config.pantalaimon.username, config.pantalaimon.password, true)
-    } catch (e) {
-        if (e?.body?.errcode === 'M_USER_IN_USE') {
-            console.log(`${config.pantalaimon.username} already registered, skipping`);
-            return;
-        }
-        throw e;
-    };
+    let accessToken = await registerUser(
+        config.homeserverUrl,
+        config.encryption.username,
+        config.encryption.username,
+        config.encryption.password,
+        true,
+    );
+
+    return accessToken;
 }
 
 export function mjolnir(): Mjolnir | null {
@@ -71,19 +70,21 @@ export function mjolnir(): Mjolnir | null {
 export function matrixClient(): MatrixClient | null {
     return globalClient;
 }
-let globalClient: MatrixClient | null
+let globalClient: MatrixClient | null;
 let globalMjolnir: Mjolnir | null;
 
 /**
  * Return a test instance of Mjolnir.
  */
 export async function makeMjolnir(config: IConfig): Promise<Mjolnir> {
-    await configureMjolnir(config);
+    let accessToken = await configureMjolnir(config);
+    let cryptoStore = await getTempCryptoStore();
     LogService.setLogger(new RichConsoleLogger());
     LogService.setLevel(LogLevel.fromString(config.logLevel, LogLevel.DEBUG));
     LogService.info("test/mjolnirSetupUtils", "Starting bot...");
-    const pantalaimon = new PantalaimonClient(config.homeserverUrl, new MemoryStorageProvider());
-    const client = await pantalaimon.createClientWithCredentials(config.pantalaimon.username, config.pantalaimon.password);
+    let client = new MatrixClient(config.homeserverUrl, accessToken, new MemoryStorageProvider(), cryptoStore);
+    await client.crypto.prepare();
+
     await overrideRatelimitForUser(config.homeserverUrl, await client.getUserId());
     patchMatrixClient();
     await ensureAliasedRoomExists(client, config.managementRoom);

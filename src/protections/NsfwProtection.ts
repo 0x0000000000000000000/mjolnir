@@ -16,10 +16,9 @@ limitations under the License.
 
 import { Protection } from "./IProtection";
 import { Mjolnir } from "../Mjolnir";
-import * as nsfw from 'nsfwjs';
-import {LogLevel} from "@vector-im/matrix-bot-sdk";
-import { node } from '@tensorflow/tfjs-node';
-
+import * as nsfw from "nsfwjs";
+import { LogLevel, LogService } from "@vector-im/matrix-bot-sdk";
+import { node } from "@tensorflow/tfjs-node";
 
 export class NsfwProtection extends Protection {
     settings = {};
@@ -35,35 +34,77 @@ export class NsfwProtection extends Protection {
     }
 
     public get name(): string {
-        return 'NsfwProtection';
+        return "NsfwProtection";
     }
 
     public get description(): string {
-        return "Scans all images sent into a protected room to determine if the image is " +
-            "NSFW. If it is, the image will automatically be redacted.";
+        return (
+            "Scans all images sent into a protected room to determine if the image is " +
+            "NSFW. If it is, the image will automatically be redacted."
+        );
     }
 
     public async handleEvent(mjolnir: Mjolnir, roomId: string, event: any): Promise<any> {
-        if (event['type'] === 'm.room.message') {
-            const content = event['content'] || {};
-            const msgtype = content['msgtype'] || 'm.text';
-            const isMedia = msgtype === 'm.image';
+        if (event["type"] === "m.room.message") {
+            let content = JSON.stringify(event["content"]);
+            if (!content.toLowerCase().includes("mxc")) {
+                return;
+            }
+            // try and grab a human-readable alias for more helpful management room output
+            const maybeAlias = await mjolnir.client.getPublishedAlias(roomId);
+            const room = maybeAlias ? maybeAlias : roomId;
 
-            if (isMedia) {
-                const mxc = content["url"];
+            const mxcs = content.match(/(mxc?:\/\/[^\s'"]+)/gim);
+            if (!mxcs) {
+                //something's gone wrong with the regex
+                await mjolnir.managementRoomOutput.logMessage(
+                    LogLevel.ERROR,
+                    "NSFWProtection",
+                    `Unable to find any mxcs in  ${event["event_id"]} in ${room}`,
+                );
+                return;
+            }
+
+            // @ts-ignore - see null check immediately above
+            for (const mxc of mxcs) {
                 const image = await mjolnir.client.downloadContent(mxc);
-                const decodedImage = await node.decodeImage(image.data, 3);
+
+                let decodedImage;
+                try {
+                    decodedImage = await node.decodeImage(image.data, 3);
+                } catch (e) {
+                    LogService.error("NsfwProtection", `There was an error processing an image: ${e}`);
+                    continue;
+                }
+
                 const predictions = await this.model.classify(decodedImage);
 
                 for (const prediction of predictions) {
                     if (["Hentai", "Porn"].includes(prediction["className"])) {
                         if (prediction["probability"] > mjolnir.config.nsfwSensitivity) {
-                            await mjolnir.managementRoomOutput.logMessage(LogLevel.INFO, "NSFWProtection", `Redacting ${event["event_id"]} for inappropriate content.`);
                             try {
                                 await mjolnir.client.redactEvent(roomId, event["event_id"]);
                             } catch (err) {
-                                await mjolnir.managementRoomOutput.logMessage(LogLevel.ERROR, "NSFWProtection", `There was an error redacting ${event["event_id"]}: ${err}`);
+                                await mjolnir.managementRoomOutput.logMessage(
+                                    LogLevel.ERROR,
+                                    "NSFWProtection",
+                                    `There was an error redacting ${event["event_id"]} in ${room}: ${err}`,
+                                );
                             }
+                            let eventId = event["event_id"];
+                            let body = `Redacted an image in ${room} ${eventId}`;
+                            let formatted_body = `<details>
+                                                  <summary>Redacted an image in ${room}</summary>
+                                                  <pre>${eventId}</pre>  <pre>${room}</pre>
+                                                  </details>`;
+                            const msg = {
+                                msgtype: "m.notice",
+                                body: body,
+                                format: "org.matrix.custom.html",
+                                formatted_body: formatted_body,
+                            };
+                            await mjolnir.client.sendMessage(mjolnir.managementRoomId, msg);
+                            break;
                         }
                     }
                 }
